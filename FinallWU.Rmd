@@ -1,0 +1,177 @@
+---
+title: "ML_Course"
+output: html_document
+---
+
+WRITE UP - COURS PROJEC TFOR PRACTICAL MACHINE LEARNING
+
+1. Load Data
+```{r}
+library(caret)
+setwd("C:/Users/JV/Desktop/learn/DataAn/Machine Learning")
+test <- read.csv("pml-testing.csv")
+training <- read.csv("pml-training.csv")
+testorig <- test
+trainingorig <- training
+training <- trainingorig
+```
+
+2 Build a training and a test set based on the training data set using random subsampling.
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.75, list=FALSE)
+training <-training[inTrain,]
+testing <-training[-inTrain,]
+training1 <- training
+
+```
+
+3. Get an impression of the data by having a looking on it and plotting it using the R commands head() and qplot from the package gqplot
+(R output is skipped here)
+
+4. Precleaning of the data - skip variables with near to zero variability and skip variables which missing data for more than 95% of the observations. Identify these variables based on the true training set exklusively  and adjust all three datasets accordingly. The variable "User Name" is also deleted because its predictive power rergarding "classe" is assessed as implausible.
+
+```{r}
+nzv <- nearZeroVar(training1,saveMetrics=TRUE)
+training1 <- training1[,which(nzv$nzv==FALSE)]
+testing <- testing[,which(nzv$nzv==FALSE)]
+test <- test[,which(nzv$nzv==FALSE)]
+
+testing <- testing[,-which(colnames(training1)=="user_name")]
+test <- test[,-which(colnames(training1)=="user_name")]
+training1 <- training1[,-which(colnames(training1)=="user_name")]
+
+misses <- numeric(dim(training1)[2])
+
+for (i in 1:dim(training1)[2]) {
+  misses[i] <- length(which(is.na(training1[,i])))
+  
+}
+
+testing <- testing[,-which(misses>(dim(training1)[1]*0.95))]
+test <- test[,-which(misses>(dim(training1)[1]*0.95))]
+training1 <- training1[,-which(misses>(dim(training1)[1]*0.95))]
+```
+
+5. Tidy up non- numerical data
+5.1. Identify non-numerical data to 
+```{r}
+num <- numeric(dim(training1)[2])
+for (i in 1:dim(training1)[2]) {
+  if(is.numeric(training1[,i])) {
+    num[i] <- 1
+  }
+}
+```
+
+5.2. Convert non-numerical explanatory data. There is only one categorial variable left after the previous cleaning steps: "cvtd timestamp". The only information which is preassessed as informative regarding the predicted variables "classes" seems to be the rough day time at which the observation has been measured. We therefore build dummies for the hours of the day time at which the observations have been measured and we then skip "cvtd_timestamp" as well as the raw data this variable has been based on:
+
+```{r}
+training1$time <- numeric(dim(training1)[1])
+training1$time[grep("13:", training1$cvtd_timestamp)] <- "13"
+training1$time[grep("11:", training1$cvtd_timestamp)] <- "11"
+training1$time[grep("14:", training1$cvtd_timestamp)] <- "14"
+training1$time[grep("17:", training1$cvtd_timestamp)] <- "17"
+training1$time <- factor(training1$time)
+
+testing$time <- numeric(dim(testing)[1])
+testing$time[grep("13:", testing$cvtd_timestamp)] <- "13"
+testing$time[grep("11:", testing$cvtd_timestamp)] <- "11"
+testing$time[grep("14:", testing$cvtd_timestamp)] <- "14"
+testing$time[grep("17:", testing$cvtd_timestamp)] <- "17"
+testing$time <- factor(testing$time)
+
+test$time <- numeric(dim(test)[1])
+test$time[grep("13:", test$cvtd_timestamp)] <- "13"
+test$time[grep("11:", test$cvtd_timestamp)] <- "11"
+test$time[grep("14:", test$cvtd_timestamp)] <- "14"
+test$time[grep("17:", test$cvtd_timestamp)] <- "17"
+test$time <- factor(test$time)
+
+test <- test[,-which(colnames(training1)=="cvtd_timestamp")]
+testing <- testing[,-which(colnames(training1)=="cvtd_timestamp")]
+training1 <- training1[,-which(colnames(training1)=="cvtd_timestamp")]
+test <- test[,-which(colnames(training1)=="raw_timestamp_part_1")]
+testing <- testing[,-which(colnames(training1)=="raw_timestamp_part_1")]
+training1 <- training1[,-which(colnames(training1)=="raw_timestamp_part_1")]
+test <- test[,-which(colnames(training1)=="raw_timestamp_part_2")]
+testing <- testing[,-which(colnames(training1)=="raw_timestamp_part_2")]
+training1 <- training1[,-which(colnames(training1)=="raw_timestamp_part_2")]
+
+
+training1$elf <- numeric(dim(training1)[1])
+training1$thirt <- numeric(dim(training1)[1])
+training1$fourt <- numeric(dim(training1)[1])
+training1$five <- numeric(dim(training1)[1])
+training1$elf[which(training1$time=="11")] <- 1
+training1$thirt[which(training1$time=="13")] <- 1
+training1$fourt[which(training1$time=="14")] <-1
+training1$five[which(training1$time=="17")] <- 1
+
+test$elf <- numeric(dim(test)[1])
+test$thirt <- numeric(dim(test)[1])
+test$fourt <- numeric(dim(test)[1])
+test$five <- numeric(dim(test)[1])
+test$elf[which(test$time=="11")] <- 1
+test$thirt[which(test$time=="13")] <- 1
+test$fourt[which(test$time=="14")] <-1
+test$five[which(test$time=="17")] <- 1
+
+testing$elf <- numeric(dim(testing)[1])
+testing$thirt <- numeric(dim(testing)[1])
+testing$fourt <- numeric(dim(testing)[1])
+testing$five <- numeric(dim(testing)[1])
+testing$elf[which(testing$time=="11")] <- 1
+testing$thirt[which(testing$time=="13")] <- 1
+testing$fourt[which(testing$time=="14")] <-1
+testing$five[which(testing$time=="5")] <- 1
+
+test <- test[,-which(colnames(training1)=="time")]
+testing <- testing[,-which(colnames(training1)=="time")]
+training1 <- training1[,-which(colnames(training1)=="time")]
+
+
+```
+
+6. Aggregate the information captured in the explanatory data left by running a PCA.
+```{r}
+nclasse <- which(colnames(training1)=="classe")
+preObj1 <- preProcess(training1[,-nclasse], method="pca", thresh=0.8) 
+trainingpred <- predict(preObj1,training1[,-nclasse])
+testingpred <- predict(preObj1,testing[,-nclasse])
+testpred <- predict(preObj1,test[,-nclasse])
+trainingpred <- cbind(trainingpred,training1[,nclasse])
+testingpred <- cbind(testingpred,testing[,nclasse])
+testpred <- cbind(testpred,test[,nclasse])
+
+colnames(trainingpred)[dim(trainingpred)[2]] <- "classe"
+colnames(testingpred)[dim(testingpred)[2]] <- "classe"
+colnames(testpred)[dim(testpred)[2]] <- "classe"
+
+```
+
+7. Estimate a model using "boosting"
+```{r}
+modFitboost <- train(classe~., data=trainingpred,  method="gbm", verbose=F)
+```
+
+8. Predit out of sample error rate using the "test-set" generated using subsampling"
+
+8.1. Predicting:
+```{r}
+crossval <- predict(modFitboost, testingpred)
+```
+
+8.2. Comparing predicted values with true classe observations
+```{r}
+vgl1 <- crossval!= testingpred$classe
+vgl1
+
+# OUT OF SAMPLE ERROR ESTIMATION IS:
+sum(vgl1)/length(vgl1)
+```
+
+9. Predict outcome for true test set
+```{r}
+crossvalt <- predict(modFitboost, testpred)
+```
+
